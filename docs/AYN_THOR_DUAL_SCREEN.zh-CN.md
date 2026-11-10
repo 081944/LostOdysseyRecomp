@@ -66,7 +66,7 @@
 - `main` 跟踪上游，个人版本分支为 `feature/android-dual-screen`。
 - 通用副屏管理集中放在 Android 层；跨平台快照与命令接口放独立模块；guest 钩子集中维护；桌面和单屏默认路径保持可用。
 - 已发布的个人分支同步上游优先 merge，避免反复改写历史。具体功能可再拆短期分支，完成后合入个人版本分支。
-- fork 使用独立 applicationId（建议 `io.github.081944.lostodyssey.thor` 不合适：数字开头不符合 Java 包段规范；可用 `io.github.user081944.lostodyssey.thor`）、应用名及自己持有的固定签名，使上游和个人版本可并存。改 applicationId 时检查 JNI 命名、显式组件、文件路径和文档；Java namespace 可先保留以缩小改动。
+- fork 使用独立 applicationId（建议 `io.github.user081944.lostodyssey.thor`）、应用名及自己持有的固定签名，使上游和个人版本可并存。改 applicationId 时检查 JNI 命名、显式组件、文件路径和文档；Java namespace 可先保留以缩小改动。
 - 调整更新检查仓库/发布链接，或在个人版禁用上游应用更新提示；不要连带修改 shader pack 与 GPU 驱动来源。
 - 上游 `.github/workflows/android-apk.yml` 需要 `LO_BUILD_INPUT_KEY` 访问作者私有仓库中的 XEX、Android DXC 和 debug.keystore；fork 不继承这些密钥。需建立自己的私有输入或本地构建流程，不能直接期待上游 CI 可运行。
 - 所有新执行脚本遵循当前 PowerShell 7、Stop 错误处理和 UTF8 规则；上游现有 Bash/批处理流程需要另行评估或移植，当前未执行。
