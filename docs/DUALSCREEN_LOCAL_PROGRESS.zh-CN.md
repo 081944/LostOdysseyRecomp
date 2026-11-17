@@ -37,7 +37,7 @@
 | Build Tools | 35.0.0 | 复用已安装版本 |
 | Java | Android Studio JBR 21 | Gradle 与 Java 数据模型检查通过；源码兼容级别仍为 Java 17 |
 | Gradle / AGP | 缓存 Gradle 8.13 / AGP 8.13.2 | 通过本地覆盖参数使用；保留上游默认配置 |
-| CMake / Ninja | 现有 CMake 4.3.2 / Ninja 1.13.2 | host 工具构建通过；原生运行库正在单独验证 |
+| CMake / Ninja | 现有 CMake 4.3.2 / Ninja 1.13.2 | host 工具与完整 Android 原生运行库构建、链接通过 |
 
 Android Gradle 模块增加 loCompileSdk、loBuildToolsVersion、loNdkVersion、loCmakeVersion 覆盖项，settings.gradle 支持 loAgpVersion。没有为了匹配上游硬编码安装旧版 SDK。
 
@@ -67,7 +67,7 @@ $ErrorActionPreference = 'Stop'
 - JNI C++ 以 NDK 29、Android API 26、ARM64、-Wall -Wextra -Werror 编译通过；导出名称已检查。
 - PowerShell 脚本语法检查和 Git diff --check 通过。
 - Thor `c53b4da` 已连接，两块显示器可见，下屏当前 ID 为 4 并带 FLAG_PRESENTATION。已通过 ADB 运行不依赖游戏的 android_companion_test 原生测试，验证 JNI 数据形状、POI 上限、过期/会话清理，以及中文和 UTF-16 代理对转换。该测试使用受控游戏快照与 JNI 测试替身，不代表真实游戏或 Presentation 窗口验收。
-- 完整原生运行库和依赖暂存结果以本文件后续追加记录为准。尚未创建/安装本次修改的 APK，未声称完成触摸、焦点、合盖、恢复或游戏流程实机验证。
+- 完整原生运行库已链接，8 个运行库已暂存，JNI 导出和 16 KiB ELF LOAD 对齐检查通过。尚未创建/安装本次修改的 APK，未声称完成触摸、焦点、合盖、恢复或游戏流程实机验证。
 
 后续实机验收顺序：下屏独立窗口 → 页签触摸与主屏手柄同时工作 → 切图清空与更新 → 后台/唤醒 → 长时间帧时间 → 原作地图与菜单绘制迁移。
 
@@ -98,3 +98,22 @@ if ($LASTEXITCODE -ne 0) { throw 'Native fixture failed' }
 ```
 
 测试覆盖原生 UTF-32 字符、guest 宽字符串保留的 UTF-16 代理对与不成对的非法码元，以及数据收集过程中发生暂停/恢复时的旧会话发布拒绝。JNI 转换兼容两种实际数据表示。
+
+## 本轮最终构建结果
+
+完整 Android 原生构建与链接成功（1285 个构建步骤），暂存目录为 `packaging/android/build/runtime-jni/arm64-v8a`。libmain.so 为含调试信息的编译中间文件，357,194,800 字节；尚未制成可安装包。
+
+全部 8 个 `.so` 均核实为 AArch64，所有 LOAD 段对齐至少 16 KiB。生产 libmain.so 的两个 CompanionSnapshot JNI 方法均存在动态导出，Java 构造函数 descriptor 也已通过 javap 与原生声明核对。
+
+最后执行下列检查时没有跳过 native library 检查，结果通过：
+
+```powershell
+$ErrorActionPreference = 'Stop'
+./tools/android/Invoke-LocalGradle.ps1 -Tasks @(':runtime:checkNativeLibraries', ':runtime:lintDebug') -ExtraArguments @('--offline')
+```
+
+最终 Lint：0 error、55 warning，新 CompanionSnapshot / DualScreenManager 无专属 lint finding。已完成的 79 项 JVM 测试、Java 快照模型测试和 Thor 原生 JNI/生命周期测试仍有效。
+
+构建环境与运行库已准备好。下一个需要授权的动作是生成测试 APK，并安装到 Thor 验证 Presentation 窗口、触摸、手柄焦点、后台恢复与真实地图数据。当前没有运行 assembleDebug 或其他 APK 生成命令，也没有安装这次修改的应用。
+
+主仓库工作区中 SDL 子模块的修改来自上游要求的 android-surface-lock 补丁；plume 与 XenonRecomp 同样使用仓库记录的依赖补丁，不推进子模块提交指针，不提交游戏数据或生成 PPC。

@@ -1,6 +1,6 @@
 # AYN Thor 双屏版本实施方案
 
-状态：已实现下屏窗口与只读方位/POI 原型；编译检查通过，尚待完整原生库与实机验证。进展见 [本机验证记录](DUALSCREEN_LOCAL_PROGRESS.zh-CN.md)。
+状态：已实现下屏窗口与只读方位/POI 原型；完整原生编译、Java/Lint 与原生边界测试通过，尚待测试 APK 和实际双屏窗口验收。进展见 [本机验证记录](DUALSCREEN_LOCAL_PROGRESS.zh-CN.md)。
 基线：上游 main，f9da0ae9bdd481a5ea4fe6431f3a4724d8261147。
 调研日期：2026-11-10。
 
