@@ -1,4 +1,11 @@
 pluginManagement {
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == 'com.android.application' && providers.gradleProperty('loAgpVersion').isPresent()) {
+                useVersion(providers.gradleProperty('loAgpVersion').get())
+            }
+        }
+    }
     repositories {
         google()
         mavenCentral()

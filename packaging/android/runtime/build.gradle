@@ -49,11 +49,11 @@ def loDebugKeystore = System.getenv('LO_ANDROID_DEBUG_KEYSTORE')
 
 android {
     namespace 'io.github.freefrank.lostodyssey'
-    compileSdk 35
-    buildToolsVersion '35.0.0'
-    ndkVersion '28.2.13676358'
+    compileSdk = (project.findProperty('loCompileSdk') ?: '35').toInteger()
+    buildToolsVersion = (project.findProperty('loBuildToolsVersion') ?: '35.0.0').toString()
+    ndkVersion = (project.findProperty('loNdkVersion') ?: '28.2.13676358').toString()
     defaultConfig {
-        applicationId 'io.github.freefrank.lostodyssey'
+        applicationId = (project.findProperty('loApplicationId') ?: 'io.github.user081944.lostodyssey.thor').toString()
         minSdk 26
         targetSdk 35
         versionCode loVersionCode

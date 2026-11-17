@@ -1,6 +1,6 @@
 # AYN Thor 双屏版本实施方案
 
-状态：架构调研与分支初始化，尚未实现双屏功能。
+状态：已实现下屏窗口与只读方位/POI 原型；编译检查通过，尚待完整原生库与实机验证。进展见 [本机验证记录](DUALSCREEN_LOCAL_PROGRESS.zh-CN.md)。
 基线：上游 main，f9da0ae9bdd481a5ea4fe6431f3a4724d8261147。
 调研日期：2026-11-10。
 
@@ -63,7 +63,7 @@
 
 - `origin`: https://github.com/081944/LostOdysseyRecomp.git
 - `upstream`: https://github.com/freefrank/LostOdysseyRecomp.git
-- `main` 跟踪上游，个人版本分支为 `feature/android-dual-screen`。
+- `main` 跟踪上游，个人版本分支为 `dualscreen`。
 - 通用副屏管理集中放在 Android 层；跨平台快照与命令接口放独立模块；guest 钩子集中维护；桌面和单屏默认路径保持可用。
 - 已发布的个人分支同步上游优先 merge，避免反复改写历史。具体功能可再拆短期分支，完成后合入个人版本分支。
 - fork 使用独立 applicationId（建议 `io.github.user081944.lostodyssey.thor`）、应用名及自己持有的固定签名，使上游和个人版本可并存。改 applicationId 时检查 JNI 命名、显式组件、文件路径和文档；Java namespace 可先保留以缩小改动。

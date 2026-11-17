@@ -6,9 +6,9 @@ apply from: '../sdl-java.gradle'
 
 android {
     namespace 'io.github.freefrank.lostodyssey.probe'
-    compileSdk 35
-    buildToolsVersion '35.0.0'
-    ndkVersion '28.2.13676358'
+    compileSdk = (project.findProperty('loCompileSdk') ?: '35').toInteger()
+    buildToolsVersion = (project.findProperty('loBuildToolsVersion') ?: '35.0.0').toString()
+    ndkVersion = (project.findProperty('loNdkVersion') ?: '28.2.13676358').toString()
 
     defaultConfig {
         applicationId 'io.github.freefrank.lostodyssey.probe'
@@ -27,7 +27,7 @@ android {
     externalNativeBuild {
         cmake {
             path '../../../tools/android_probe/CMakeLists.txt'
-            version '3.22.1'
+            version = (project.findProperty('loCmakeVersion') ?: '3.22.1').toString()
         }
     }
     // Compile a generated copy of the pinned SDL Java shim with local Android fixes.

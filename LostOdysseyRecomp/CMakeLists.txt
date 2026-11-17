@@ -6,6 +6,7 @@ if(LO_RENDERER_P2_SELFTEST AND NOT LO_BUILD_GPU)
 endif()
 
 set(LO_RUNTIME_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+set(LO_DXC_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/tools/XenosRecomp/thirdparty/dxc-bin/inc" CACHE PATH "DXC public API headers")
 include("${CMAKE_SOURCE_DIR}/cmake/portable_shader_pack.cmake")
 add_library(lo_menu_lzo STATIC EXCLUDE_FROM_ALL ${CMAKE_SOURCE_DIR}/thirdparty/lzokay/lzokay.cpp)
 target_include_directories(lo_menu_lzo PUBLIC ${CMAKE_SOURCE_DIR}/thirdparty/lzokay)
@@ -222,7 +223,7 @@ target_include_directories(LostOdysseyRecomp PRIVATE
     # miniz.h for modding/asset_export.cpp; updater/stage.cpp holds the definitions.
     ${LO_MINIZ_DIR}
     # gpu/shader/dxc_compiler.cpp is part of every runtime build, GPU or not.
-    ${CMAKE_SOURCE_DIR}/tools/XenosRecomp/thirdparty/dxc-bin/inc)
+    ${LO_DXC_INCLUDE_DIR})
 
 target_precompile_headers(LostOdysseyRecomp PRIVATE stdafx.h)
 target_compile_features(LostOdysseyRecomp PRIVATE cxx_std_20)
@@ -450,7 +451,7 @@ if(WIN32)
         ${LO_RUNTIME_ROOT}/os/capture_archive.cpp
         ${LO_RUNTIME_ROOT}/gpu/shader/dxc_compiler.cpp)
     target_include_directories(LoShaderLogTest PRIVATE ${LO_RUNTIME_ROOT}
-        ${CMAKE_SOURCE_DIR}/tools/XenosRecomp/thirdparty/dxc-bin/inc)
+        ${LO_DXC_INCLUDE_DIR})
     target_compile_features(LoShaderLogTest PRIVATE cxx_std_20)
     target_compile_definitions(LoShaderLogTest PRIVATE NOMINMAX)
     target_link_libraries(LoShaderLogTest PRIVATE fmt::fmt)
@@ -542,7 +543,7 @@ add_executable(LoShaderTool
     ${LO_RUNTIME_ROOT}/gpu/shader/xenos_translator.cpp
     ${LO_RUNTIME_ROOT}/gpu/shader/dxc_compiler.cpp)
     target_include_directories(LoShaderTool PRIVATE ${LO_RUNTIME_ROOT}
-        ${CMAKE_SOURCE_DIR}/tools/XenosRecomp/thirdparty/dxc-bin/inc)
+        ${LO_DXC_INCLUDE_DIR})
 target_compile_features(LoShaderTool PRIVATE cxx_std_20)
 target_compile_definitions(LoShaderTool PRIVATE NOMINMAX)
 target_link_libraries(LoShaderTool PRIVATE fmt::fmt)
@@ -555,7 +556,7 @@ if(WIN32 OR APPLE)
         ${LO_RUNTIME_ROOT}/gpu/shader/xenos_translator.cpp
         ${LO_RUNTIME_ROOT}/gpu/shader/dxc_compiler.cpp)
     target_include_directories(LoRenderResolutionShaderTest PRIVATE ${LO_RUNTIME_ROOT}
-        ${CMAKE_SOURCE_DIR}/tools/XenosRecomp/thirdparty/dxc-bin/inc)
+        ${LO_DXC_INCLUDE_DIR})
     target_compile_features(LoRenderResolutionShaderTest PRIVATE cxx_std_20)
     target_compile_definitions(LoRenderResolutionShaderTest PRIVATE NOMINMAX)
     target_link_libraries(LoRenderResolutionShaderTest PRIVATE fmt::fmt)
@@ -565,7 +566,7 @@ if(WIN32 OR APPLE)
         ${LO_RUNTIME_ROOT}/gpu/shader/xenos_translator.cpp
         ${LO_RUNTIME_ROOT}/gpu/shader/dxc_compiler.cpp)
     target_include_directories(LoShadowProjectionShaderTest PRIVATE ${LO_RUNTIME_ROOT}
-        ${CMAKE_SOURCE_DIR}/tools/XenosRecomp/thirdparty/dxc-bin/inc)
+        ${LO_DXC_INCLUDE_DIR})
     target_compile_features(LoShadowProjectionShaderTest PRIVATE cxx_std_20)
     target_compile_definitions(LoShadowProjectionShaderTest PRIVATE NOMINMAX)
     target_link_libraries(LoShadowProjectionShaderTest PRIVATE fmt::fmt)

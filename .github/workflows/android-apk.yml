@@ -18,6 +18,9 @@ permissions:
   contents: read
 jobs:
   apk:
+    # Personal forks compile/package explicitly; a normal source push must not
+    # invoke the upstream private-input APK job.
+    if: github.repository == 'freefrank/LostOdysseyRecomp' || github.event_name == 'workflow_dispatch'
     name: Android arm64 APK
     runs-on: ubuntu-22.04
     timeout-minutes: 240

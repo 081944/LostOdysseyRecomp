@@ -35,6 +35,7 @@ public final class RuntimeActivity extends SDLActivity {
     private static final long BOOT_SETTLED_MS = 15000;
 
     private TouchControlsView touchControls;
+    private DualScreenManager dualScreen;
     /** Why the renderer could not start with the selected driver; set from native code. */
     private volatile String graphicsFailure;
     private final Handler bootHandler = new Handler(Looper.getMainLooper());
@@ -72,6 +73,7 @@ public final class RuntimeActivity extends SDLActivity {
                 RelativeLayout.LayoutParams.MATCH_PARENT,
                 RelativeLayout.LayoutParams.MATCH_PARENT));
             nativeSetTouchInput(0, 0, 0, 0, 0, 0, 0);
+            if (!getIntent().getBooleanExtra(EXTRA_IMPORT, false)) dualScreen = new DualScreenManager(this);
         }
     }
 
@@ -131,6 +133,7 @@ public final class RuntimeActivity extends SDLActivity {
 
     @Override
     protected void onPause() {
+        if (dualScreen != null) dualScreen.stop();
         if (touchControls != null) touchControls.onHostPause();
         // Leaving the game is when a player connects USB to fetch the log.
         PlayerLogs.publish(this);
@@ -185,6 +188,7 @@ public final class RuntimeActivity extends SDLActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (dualScreen != null) dualScreen.start();
         hideSystemBars();
         if (touchControls != null) touchControls.onHostResume();
         bootHandler.removeCallbacks(bootSettled);
@@ -201,6 +205,7 @@ public final class RuntimeActivity extends SDLActivity {
 
     @Override
     protected void onDestroy() {
+        if (dualScreen != null) dualScreen.stop();
         if (touchControls != null) touchControls.clearTouches();
         bootHandler.removeCallbacks(bootSettled);
         bootHandler.removeCallbacks(hideSystemBarsRunnable);
@@ -243,6 +248,9 @@ public final class RuntimeActivity extends SDLActivity {
         nativeSetenv("LO_NATIVE_LIB_DIR", getApplicationInfo().nativeLibraryDir + "/");
         // Logs go where a PC can copy them over USB; the device line names the phone.
         nativeSetenv("LO_LOG_DIR", PlayerLogs.directory(this).getAbsolutePath());
+        // This fork has its own application ID and signing identity. Its updates
+        // will be distributed separately from the upstream single-screen app.
+        nativeSetenv("LO_NO_UPDATE", "1");
         nativeSetenv("LO_ANDROID_DEVICE", PlayerLogs.deviceDescription());
         // The importer's drive list: SD cards and USB drives (apps cannot list /storage).
         nativeSetenv("LO_STORAGE_VOLUMES", TextUtils.join(":", GameStorage.removableRoots(this)));
