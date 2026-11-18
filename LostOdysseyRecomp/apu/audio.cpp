@@ -23,6 +23,7 @@ namespace apu
         std::atomic<bool> g_resetFastForwardAudio{ false };
         std::array<float, XAUDIO_NUM_CHANNELS> g_lastAudioSamples{};
         std::atomic<uint32_t> g_framesSubmitted{ 0 };
+        std::atomic<uint32_t> g_framesQueued{ 0 };
         os::GuestCodeThread g_thread; // runs the guest audio callback
         std::atomic<bool> g_running{ false };
         // A live output change closes the device while guest threads may
@@ -42,14 +43,17 @@ namespace apu
         std::atomic<std::chrono::steady_clock::rep> g_testSignalUntil{ 0 };
         std::atomic<float> g_testPosition{ -1.0f };
         std::atomic<uint32_t> g_outputChannels{ 0 };
-        // Frames kept queued ahead of the device. A phone's thermally capped
-        // CPU can run the driver thread tens of milliseconds late, so Android
-        // keeps ~43 ms instead of ~21 ms; a late wakeup within that catches up.
+        // Frames kept queued ahead of the device. Thor measurements show the
+        // guest callback waiting 65-89 ms for its audio workers, even when the
+        // producer wakes on time. Keep 128 ms on Android to cover that burst
+        // and leave refill headroom; the old 43 ms reserve drained mid-callback.
 #if LO_PLATFORM_ANDROID
-        constexpr uint32_t kQueuedFrames = 8;
+        constexpr uint32_t kQueuedFrames = 24;
 #else
         constexpr uint32_t kQueuedFrames = 4;
 #endif
+        // The submission safety cap must never be below the producer target.
+        constexpr uint32_t kMaxQueuedFrames = std::max(16u, kQueuedFrames);
         // Times a frame found the queue empty (the device ran dry) and times
         // the driver gave up catching up after a stall; logged with the frames.
         std::atomic<uint32_t> g_starved{ 0 };
@@ -136,6 +140,14 @@ namespace apu
                 g_channels = desired.channels;
                 if (g_paused) SDL_PauseAudioDevice(g_device);
                 else SDL_ResumeAudioDevice(g_device);
+            }
+            if (g_device)
+            {
+                SDL_AudioSpec format{};
+                int sampleFrames = 0;
+                if (SDL_GetAudioDeviceFormat(g_device, &format, &sampleFrames))
+                    LOG_INFO("audio device buffer: {} samples ({:.2f} ms)", sampleFrames,
+                        1000.0 * sampleFrames / format.freq);
             }
             if (!g_device) LOG_WARNING("audio device unavailable: {}", SDL_GetError());
             else LOG_INFO("audio output: 48000 Hz {} float, device channels listed {} mix {}, SDL driver {}",
@@ -236,10 +248,24 @@ namespace apu
             os::SetCurrentThreadName("Audio Driver");
             os::scheduling::RaiseAudioThreadPriority();
             GuestThreadContext ctx(3);
+#if LO_PLATFORM_ANDROID
+            double maxWaitMs = 0, maxDispatchMs = 0, maxSleepMs = 0;
+            uint32_t timingReportAt = 1875;
+#endif
             constexpr auto framePeriod = std::chrono::microseconds(1000000ull * XAUDIO_NUM_SAMPLES / XAUDIO_SAMPLES_HZ);
+#if !LO_PLATFORM_ANDROID
             auto next = std::chrono::steady_clock::now();
+#endif
             while (g_running)
             {
+#if LO_PLATFORM_ANDROID
+                // Let device consumption pace production. A timer that emits
+                // only one frame per wake never actually primes the advertised
+                // queue reserve, and dropping late deadlines loses audio time.
+                // Refill immediately until the bounded queue is full instead.
+                const auto retryAt = std::chrono::steady_clock::now() + framePeriod;
+                const auto queuedBefore = g_framesQueued.load(std::memory_order_relaxed);
+#else
                 next += framePeriod;
                 // Precise wakeups: a late one drains the few frames SDL has queued.
                 os::scheduling::PreciseSleepUntil(next);
@@ -249,6 +275,7 @@ namespace apu
                     next = std::chrono::steady_clock::now();
                     g_clockResets.fetch_add(1, std::memory_order_relaxed);
                 }
+#endif
                 if (const bool surround = g_surroundRequested; g_audioReady && surround != g_surroundOpen)
                 {
                     std::lock_guard lock(g_deviceMutex);
@@ -260,11 +287,17 @@ namespace apu
 #if LO_PLATFORM_ANDROID
                 auto resumed = g_resumedAt.load(std::memory_order_relaxed);
                 bool waited = false;
+                const auto waitStart = std::chrono::steady_clock::now();
 #endif
                 while (QueuedFrames() >= kQueuedFrames)
                 {
+#if LO_PLATFORM_ANDROID
+                    const auto sleepStart = std::chrono::steady_clock::now();
+#endif
                     os::scheduling::PreciseSleepFor(std::chrono::milliseconds(1));
 #if LO_PLATFORM_ANDROID
+                    maxSleepMs = std::max(maxSleepMs,
+                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - sleepStart).count());
                     waited = true;
                     ReopenIfStalledAfterResume();
 #endif
@@ -274,6 +307,11 @@ namespace apu
                 if (resumed && waited) g_resumedAt.compare_exchange_strong(resumed, 0);
 #endif
 
+#if LO_PLATFORM_ANDROID
+                const auto dispatchStart = std::chrono::steady_clock::now();
+                maxWaitMs = std::max(maxWaitMs,
+                    std::chrono::duration<double, std::milli>(dispatchStart - waitStart).count());
+#endif
                 const auto dispatch = [&](uint32_t frames)
                 {
                     g_guestFramesPerOutput.store(frames, std::memory_order_relaxed);
@@ -310,6 +348,23 @@ namespace apu
                 }
                 else
                     dispatch(1);
+#if LO_PLATFORM_ANDROID
+                maxDispatchMs = std::max(maxDispatchMs,
+                    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - dispatchStart).count());
+                if (g_framesSubmitted.load(std::memory_order_relaxed) >= timingReportAt)
+                {
+                    LOG_INFO("audio timing: max_wait_ms={:.2f} max_sleep_ms={:.2f} max_dispatch_ms={:.2f}",
+                        maxWaitMs, maxSleepMs, maxDispatchMs);
+                    timingReportAt = g_framesSubmitted.load(std::memory_order_relaxed) + 1875;
+                    maxWaitMs = maxSleepMs = maxDispatchMs = 0;
+                }
+                // Registration can be absent, a callback can produce no data,
+                // and a device can be unavailable. Those cases have no device
+                // backpressure, so retain a bounded retry rate rather than spin.
+                if (!g_outputChannels.load(std::memory_order_relaxed) ||
+                    g_framesQueued.load(std::memory_order_relaxed) == queuedBefore)
+                    os::scheduling::PreciseSleepUntil(retryAt);
+#endif
             }
         }
     }
@@ -523,18 +578,29 @@ namespace apu
                 const float* data = g_channels == 6 ? surround.data() : stereo.data();
                 const int before = SDL_GetAudioStreamQueued(g_stream);
                 if (before == 0 && n > 1) g_starved.fetch_add(1, std::memory_order_relaxed);
-                if (before < int(FrameBytes() * 16))
+                if (before < int(FrameBytes() * kMaxQueuedFrames))
                 {
-                    if (!SDL_PutAudioStreamData(g_stream, data, int(FrameBytes()))) ++queueErrors;
+                    if (SDL_PutAudioStreamData(g_stream, data, int(FrameBytes())))
+                        g_framesQueued.fetch_add(1, std::memory_order_relaxed);
+                    else ++queueErrors;
                 }
                 else ++queueDrops;
                 if (report) queued = std::max(0, SDL_GetAudioStreamQueued(g_stream));
             }
         }
         if (report)
-            LOG_INFO("audio frames submitted: {} peak={} queued={} mute={} queue_drops={} queue_errors={} starved={} clock_resets={}",
-                n, peak, queued, mute, queueDrops, queueErrors, g_starved.load(std::memory_order_relaxed),
+        {
+            static auto previousReport = std::chrono::steady_clock::now();
+            static uint32_t previousFrames = 0;
+            const auto now = std::chrono::steady_clock::now();
+            const double elapsed = std::chrono::duration<double>(now - previousReport).count();
+            const double rate = n > 1 && elapsed > 0 ? double(n - previousFrames) / elapsed : 0;
+            LOG_INFO("audio frames submitted: {} peak={} queued={} mute={} queue_drops={} queue_errors={} producer_hz={:.1f} starved={} clock_resets={}",
+                n, peak, queued, mute, queueDrops, queueErrors, rate, g_starved.load(std::memory_order_relaxed),
                 g_clockResets.load(std::memory_order_relaxed));
+            previousReport = now;
+            previousFrames = n;
+        }
     }
 
     void SetPaused(bool paused)

@@ -1,6 +1,6 @@
 # dualscreen 开发与本机验证记录
 
-更新：2026-11-17。个人版本分支：`dualscreen`。本文件不包含游戏内容。
+更新：2026-11-18。个人版本分支：`dualscreen`。本文件不包含游戏内容。
 
 ## 已实现的第一阶段
 
@@ -67,7 +67,7 @@ $ErrorActionPreference = 'Stop'
 - JNI C++ 以 NDK 29、Android API 26、ARM64、-Wall -Wextra -Werror 编译通过；导出名称已检查。
 - PowerShell 脚本语法检查和 Git diff --check 通过。
 - Thor `c53b4da` 已连接，两块显示器可见，下屏当前 ID 为 4 并带 FLAG_PRESENTATION。已通过 ADB 运行不依赖游戏的 android_companion_test 原生测试，验证 JNI 数据形状、POI 上限、过期/会话清理，以及中文和 UTF-16 代理对转换。该测试使用受控游戏快照与 JNI 测试替身，不代表真实游戏或 Presentation 窗口验收。
-- 完整原生运行库已链接，8 个运行库已暂存，JNI 导出和 16 KiB ELF LOAD 对齐检查通过。尚未创建/安装本次修改的 APK，未声称完成触摸、焦点、合盖、恢复或游戏流程实机验证。
+- 完整原生运行库已链接，8 个运行库已暂存，JNI 导出和 16 KiB ELF LOAD 对齐检查通过。后续已获授权生成并安装测试 APK；下屏窗口、页签触摸和主屏焦点已实测。合盖、恢复和完整游戏流程仍待验证。
 
 后续实机验收顺序：下屏独立窗口 → 页签触摸与主屏手柄同时工作 → 切图清空与更新 → 后台/唤醒 → 长时间帧时间 → 原作地图与菜单绘制迁移。
 
@@ -101,7 +101,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Native fixture failed' }
 
 ## 本轮最终构建结果
 
-完整 Android 原生构建与链接成功（1285 个构建步骤），暂存目录为 `packaging/android/build/runtime-jni/arm64-v8a`。libmain.so 为含调试信息的编译中间文件，357,194,800 字节；尚未制成可安装包。
+完整 Android 原生构建与链接成功（1285 个构建步骤），暂存目录为 `packaging/android/build/runtime-jni/arm64-v8a`。libmain.so 为含调试信息的编译中间文件，357,194,800 字节（首轮原生构建）；后续已生成并安装测试 APK。
 
 全部 8 个 `.so` 均核实为 AArch64，所有 LOAD 段对齐至少 16 KiB。生产 libmain.so 的两个 CompanionSnapshot JNI 方法均存在动态导出，Java 构造函数 descriptor 也已通过 javap 与原生声明核对。
 
@@ -114,6 +114,20 @@ $ErrorActionPreference = 'Stop'
 
 最终 Lint：0 error、55 warning，新 CompanionSnapshot / DualScreenManager 无专属 lint finding。已完成的 79 项 JVM 测试、Java 快照模型测试和 Thor 原生 JNI/生命周期测试仍有效。
 
-构建环境与运行库已准备好。下一个需要授权的动作是生成测试 APK，并安装到 Thor 验证 Presentation 窗口、触摸、手柄焦点、后台恢复与真实地图数据。当前没有运行 assembleDebug 或其他 APK 生成命令，也没有安装这次修改的应用。
+已获用户授权生成并安装测试 APK。首轮版本为 1.1.0-dualscreen.1，独立应用 ID 为 io.github.user081944.lostodyssey.thor。安装不覆盖上游应用。实机日志确认 Presentation 在显示器 4 打开，下屏页签触摸有效，主屏仍为顶层焦点显示器。用户完成驱动与 shader 下载后已进入游戏；完整地图数据、菜单迁移、手柄并行操作及后台恢复仍需继续验证。
 
 主仓库工作区中 SDL 子模块的修改来自上游要求的 android-surface-lock 补丁；plume 与 XenonRecomp 同样使用仓库记录的依赖补丁，不推进子模块提交指针，不提交游戏数据或生成 PPC。
+
+## 音频问题调查（2026-11-18）
+
+用户在 Thor 上报告声音断续或爆音。首轮游戏日志显示：每 1875 个 256-sample 音频块（48 kHz 下应为 10 秒）实际需要约 12–13 秒，且队列见底与生产时钟重置计数持续增加。同期渲染约 30 FPS，未据此调整画质或更换驱动。
+
+Android 音频生产改为依据设备队列消耗补充至原有 8 块上限，移除独立定时器丢弃迟到时间的行为；无回调、无输出设备或无提交时仍限制重试速度。桌面端时钟和快进混音逻辑保留。新增 producer_hz 诊断，正常速度目标为 187.5 块/秒。
+
+1.1.0-dualscreen.2 的实机生产速度约 172–176 块/秒，较旧采样改善但仍低于目标；用户确认声音仍然断续，不能将此版本视为完成修复。已追加设备实际 buffer 大小与等待/休眠/回调耗时诊断，继续定位。日志中的 starved 指提交前发现 SDL 输入队列为空，不等同硬件 XRUN。
+
+完整 Android 原生编译和 APK 签名、16 KiB ZIP 对齐核验通过。音频回调注册/替换/注销并发测试与快进音调/速率/切换测试已编译为 ARM64 并在 Thor 执行通过；这些是 CPU 逻辑测试，不打开真实音频设备，不能替代实机听感验收。测试包、设备日志、截图及游戏文件均仅留在忽略目录，不提交 Git。
+后续使用 simpleperf 记录 10 秒含离 CPU 的调用栈，并用同次构建的未 strip libmain.so 符号解析：Audio Driver 的回调主要阻塞于 sub_82CC4F10 → KeWaitForMultipleObjects，等待游戏音频工作线程。512-sample SDL 设备缓冲约 10.67 ms；1 ms 休眠实测最长约 3–4 ms，但单次回调等待可达 65–89 ms。临时将两个工作线程 nice 提至 -16 没有消除停顿，已恢复 -4，未提交这项试验。
+
+最终候选方案将 Android 队列储备改为 24 块（128 ms），覆盖上述等待并保留补充余量，代价是相较旧 8 块增加最多约 85 ms 队列延迟。生产目标与提交安全上限必须一致：提交上限由 max(16, kQueuedFrames) 推导；只有 SDL 真正接受数据才递增 g_framesQueued，无成功入队时限制重试速率，避免丢弃音频导致回调失去节拍。验证必须同时满足 producer_hz 约 187.5、queue_drops/queue_errors 不增长以及听感正常，不能仅依据 frames submitted 增长判断通过。
+实机验收版本：1.1.0-dualscreen.5，已覆盖安装至同一独立应用，保留存档、驱动及 shader 缓存。APK SHA-256：084c561bb19e85e86aa382c3b99badfa484747a97e72bb6b299eb43508303fd3；签名与 16 KiB ZIP 对齐核验通过。热身后四个连续报告窗口 producer_hz 为 187.9、187.1、186.4、186.5，queue_drops=0、queue_errors=0；前约 52 秒 starved 累计 8，仍有少量输入队列见底，不能宣称所有场景零欠载。用户在该版上确认“声音正常了”。当前保留该版本继续游戏，后续长时间运行、切图、暂停恢复及蓝牙输出还需另行验证。
